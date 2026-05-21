@@ -37,23 +37,42 @@ if not st.session_state.access:
             st.error("비밀번호가 틀렸습니다.")
     st.stop()
 
-# 3. 구글 스프레드시트 연동
+# 3. 구글 스프레드시트 연동 (가로형 표 90도 회전 마법 적용!)
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1ZGO6eR1AoBzGwOLGsgBfwgm2_SFx0sA2JY01tICoEWc/edit?usp=sharing"
 CSV_URL = SHEET_URL.split('/edit')[0] + '/export?format=csv'
 
-# 캐시 비우기 버튼용 변수
 if st.sidebar.button("🔄 즉시 새로고침 (캐시 비우기)"):
     st.cache_data.clear()
     st.rerun()
 
-@st.cache_data(ttl=5) # 5초로 단축하여 더 빠르게 반영
+@st.cache_data(ttl=5)
 def load_data():
     try:
-        df = pd.read_csv(CSV_URL)
-        df.columns = df.columns.str.strip()
-        return df, None
+        # 헤더 없이 원본 그대로 가져오기
+        df_raw = pd.read_csv(CSV_URL, header=None)
+        
+        # 💡 마법 1: 맨 왼쪽 위(0,0)에 있는 지역 이름(예: 수도권) 기억해두기
+        region_name = str(df_raw.iloc[0, 0]).strip() if pd.notna(df_raw.iloc[0, 0]) else "전체"
+        
+        # 빈 줄 삭제
+        df_raw = df_raw.dropna(how='all')
+        
+        # 💡 마법 2: 맨 첫 번째 열(구분, 점포명 등)을 기준으로 잡고 90도 휙 돌리기(Transpose)
+        df_raw.set_index(0, inplace=True)
+        df_t = df_raw.T
+        
+        # 열 이름 텍스트 정리
+        df_t.columns = df_t.columns.astype(str).str.strip()
+        
+        # 지역 칸 추가
+        df_t['지역'] = region_name
+        
+        # 경영주명이 있는 진짜 데이터만 남기기
+        if '경영주명' in df_t.columns:
+            df_t = df_t.dropna(subset=['경영주명'])
+            
+        return df_t, None
     except Exception as e:
-        # 💡 무슨 에러가 나는지 글씨로 알려줍니다.
         return pd.DataFrame(), str(e)
 
 df, error_msg = load_data()
@@ -61,15 +80,13 @@ df, error_msg = load_data()
 # 4. 메인 화면 구성
 st.title("🏪 경영주협의회 명단 시스템")
 
-# 🚨 만약 엑셀을 읽다가 에러가 났다면 화면에 경고창을 띄웁니다.
 if error_msg:
-    st.error(f"❌ 구글 시트를 읽어오는 중에 진짜 에러가 발생했습니다! 원인: {error_msg}")
-    st.info("💡 해결법: 구글 시트 첫 줄에 빈 칸이 있거나 제목 행이 꼬였을 수 있습니다. 시트를 확인해 주세요.")
+    st.error(f"❌ 데이터 변환 중 에러 발생: {error_msg}")
 elif df.empty:
-    st.warning("⚠️ 구글 시트에 아무런 내용(데이터)이 적혀있지 않습니다.")
+    st.warning("⚠️ 구글 시트에 경영주명 데이터가 없거나 읽어올 수 없습니다.")
 else:
-    # (관리자용 데이터 미리보기)
-    with st.expander("🛠️ (관리자용) 구글 시트 원본 데이터 확인하기"):
+    with st.expander("🛠️ (관리자용) 90도 회전된 데이터 확인하기"):
+        st.write("어플이 가로형 데이터를 세로형으로 똑똑하게 변환한 모습입니다!")
         st.dataframe(df)
 
     col_filter1, col_filter2 = st.columns(2)
@@ -89,7 +106,7 @@ else:
 
     if search_term:
         cond = pd.Series(False, index=filtered_df.index)
-        for col in ["이름", "경영주명", "점포명"]:
+        for col in ["경영주명", "점포명"]:
             if col in filtered_df.columns:
                 cond = cond | filtered_df[col].astype(str).str.contains(search_term, na=False)
         filtered_df = filtered_df[cond]
@@ -104,16 +121,17 @@ else:
         col_idx = index % 3
         with cols[col_idx]:
             
-            raw_url = row.get("사진링크", row.get("사진", ""))
+            # 사진 주소 가져오기
+            raw_url = row.get("사진", "")
             img_url = default_img
             if pd.notna(raw_url) and str(raw_url).strip().startswith("http"):
                 img_url = str(raw_url).strip()
 
             val_region = row.get('지역', '지역 미정')
-            val_title  = row.get('직책', row.get('구분', '경영주'))
-            val_name   = row.get('이름', row.get('경영주명', '무명'))
+            val_title  = row.get('구분', '경영주')
+            val_name   = row.get('경영주명', '무명')
             val_store  = row.get('점포명', '-')
-            val_phone  = row.get('연락처', row.get('연락터', '-'))
+            val_phone  = row.get('연락처', '-')
 
             with st.container():
                 st.image(img_url, width=140)
