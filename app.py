@@ -31,7 +31,7 @@ if not st.session_state.access:
 # 3. 구글 시트 데이터 불러오기
 # 아래 URL의 '시트주소' 부분을 본인의 구글 시트 주소로 바꿔주세요!
 # (주의: 주소 끝부분의 /edit... 를 /export?format=csv 로 바꿔야 읽어올 수 있습니다)
-SHEET_URL = "여기에_아까_복사한_구글시트_주소를_넣으세요"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1ZGO6eR1AoBzGwOLGsgBfwgm2_SFx0sA2JY01tICoEWc/edit?usp=sharing"
 CSV_URL = SHEET_URL.split('/edit')[0] + '/export?format=csv'
 
 @st.cache_data
