@@ -41,27 +41,35 @@ if not st.session_state.access:
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1ZGO6eR1AoBzGwOLGsgBfwgm2_SFx0sA2JY01tICoEWc/edit?usp=sharing"
 CSV_URL = SHEET_URL.split('/edit')[0] + '/export?format=csv'
 
-@st.cache_data(ttl=10)
+# 캐시 비우기 버튼용 변수
+if st.sidebar.button("🔄 즉시 새로고침 (캐시 비우기)"):
+    st.cache_data.clear()
+    st.rerun()
+
+@st.cache_data(ttl=5) # 5초로 단축하여 더 빠르게 반영
 def load_data():
     try:
         df = pd.read_csv(CSV_URL)
-        # 💡 공백 때문에 못 찾는 에러 방지 (열 이름의 양옆 띄어쓰기 자동 제거)
         df.columns = df.columns.str.strip()
-        return df
-    except:
-        return pd.DataFrame()
+        return df, None
+    except Exception as e:
+        # 💡 무슨 에러가 나는지 글씨로 알려줍니다.
+        return pd.DataFrame(), str(e)
 
-df = load_data()
+df, error_msg = load_data()
 
 # 4. 메인 화면 구성
 st.title("🏪 경영주협의회 명단 시스템")
 
-if df.empty:
-    st.error("⚠️ 데이터를 불러오지 못했습니다.")
+# 🚨 만약 엑셀을 읽다가 에러가 났다면 화면에 경고창을 띄웁니다.
+if error_msg:
+    st.error(f"❌ 구글 시트를 읽어오는 중에 진짜 에러가 발생했습니다! 원인: {error_msg}")
+    st.info("💡 해결법: 구글 시트 첫 줄에 빈 칸이 있거나 제목 행이 꼬였을 수 있습니다. 시트를 확인해 주세요.")
+elif df.empty:
+    st.warning("⚠️ 구글 시트에 아무런 내용(데이터)이 적혀있지 않습니다.")
 else:
-    # 🛠️ 내가 작성한 시트가 어떻게 들어오는지 확인하는 버튼 (클릭해서 열어보세요!)
-    with st.expander("🛠️ (관리자용) 구글 시트가 어플에 어떻게 들어오는지 확인하기"):
-        st.write("아래 표의 첫 번째 줄(회색칸) 글씨들과 코드가 매칭되어야 합니다.")
+    # (관리자용 데이터 미리보기)
+    with st.expander("🛠️ (관리자용) 구글 시트 원본 데이터 확인하기"):
         st.dataframe(df)
 
     col_filter1, col_filter2 = st.columns(2)
@@ -79,7 +87,6 @@ else:
     if selected_region != "전체" and "지역" in filtered_df.columns:
         filtered_df = filtered_df[filtered_df["지역"] == selected_region]
 
-    # 검색어가 이름, 경영주명, 점포명 어디에든 있으면 찾아줌
     if search_term:
         cond = pd.Series(False, index=filtered_df.index)
         for col in ["이름", "경영주명", "점포명"]:
@@ -97,13 +104,11 @@ else:
         col_idx = index % 3
         with cols[col_idx]:
             
-            # 💡 스마트 매칭: '사진링크' 열이 없으면 '사진' 열을 찾습니다.
             raw_url = row.get("사진링크", row.get("사진", ""))
             img_url = default_img
             if pd.notna(raw_url) and str(raw_url).strip().startswith("http"):
                 img_url = str(raw_url).strip()
 
-            # 💡 스마트 매칭: 시트의 다양한 제목에 맞춰 유연하게 데이터를 가져옵니다.
             val_region = row.get('지역', '지역 미정')
             val_title  = row.get('직책', row.get('구분', '경영주'))
             val_name   = row.get('이름', row.get('경영주명', '무명'))
